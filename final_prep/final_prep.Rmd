@@ -7,22 +7,99 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+```{r message = FALSE}
+library(tidyverse)
+library(lme4)
+library(equatiomatic)
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+set.seed(123)
+d <- tibble(
+  class = rep(1:8, length.out = 60),
+  math = rnorm(60, 100, 10),
+  trt = rbinom(60, 1, .5),
+  provider_score = rnorm(60)
+)
 
-```{r cars}
-summary(cars)
+m <- lmer(math ~ trt*provider_score + (1|class), 
+          data = d)
 ```
 
-## Including Plots
+$$
+\begin{aligned}
+  \operatorname{math}_{i}  &\sim N \left(\mu, \sigma^2 \right) \\
+    \mu &=\alpha_{j[i]} + \beta_{1}(\operatorname{trt}) + \beta_{2}(\operatorname{provider\_score}) + \beta_{3}(\operatorname{provider\_score} \times \operatorname{trt}) \\
+    \alpha_{j}  &\sim N \left(\mu_{\alpha_{j}}, \sigma^2_{\alpha_{j}} \right)
+    \text{, for class j = 1,} \dots \text{,J}
+\end{aligned}
+$$
 
-You can also embed plots, for example:
+# Conduct simulation
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r }
+set.seed(124)
+# set params
+n <- 60
+n_class <- 8
+
+# intercept
+a <- 20
+
+# slopes
+b1 <- 5
+b2 <- 1
+b3 <- 0.3
+
+# intercept variance
+a_sd <- 3
+
+# residual variance
+sigma <- 1
+
+# Simulate the intercept variance
+a_j <- rnorm(n = n_class, 
+             mean = a, 
+             sd = a_sd)
+
+a_j
+
+trt_x <- rep(0:1, 30)
+
+# SD in the below will relate to your SE for the coefficient
+# Larger SD = lower SE
+provider_score_x <- rnorm(n = n, mean = 0, sd = 5)
+
+
+# Create student-level data (minus intercept)
+beta_sum <- (b1 * trt_x) + (b2 * provider_score_x) + (b3 * (trt_x * provider_score_x))
+beta_sum
+
+d <- tibble(
+  classroom = replicate(n, sample(1:8, 1)),
+  trt = trt_x,
+  provider_score = provider_score_x,
+  score = beta_sum
+)
+
+d %>% 
+  arrange(classroom)
+
+classroom_ints <- tibble(
+  classroom = 1:n_class,
+  class_int = a_j
+)
+
+sim_d <- left_join(d, classroom_ints) %>% 
+  mutate(score = score + class_int,
+         score = rnorm(n, score, sigma)) %>% 
+  select(-class_int)
+
+
+# Check to see if it worked
+# We should replicate all of the params we set above
+m <- lmer(score ~ trt*provider_score + (1|classroom),
+          data = sim_d)
+
+summary(m)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
